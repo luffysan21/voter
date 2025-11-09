@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>🗳️ Voter Search · One‑Page App (Login + Role + Sources + Directory by mar_full)</title>
+  <script type="module" src="https://esm.sh/@supabase/supabase-js@2"></script>
+  <style>
+    :root{--bg1:#a8c0ff;--bg2:#3f2b96;--card:#ffffff;--text:#243b70}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,sans-serif;background:linear-gradient(135deg,var(--bg1),var(--bg2));min-height:100vh;margin:0;display:flex;justify-content:center;align-items:start;padding:30px}
+    .container{background:var(--card);border-radius:16px;padding:26px;box-shadow:0 10px 25px rgba(0,0,0,.2);width:95%;max-width:1100px}
+    h1,h2{color:var(--text);margin:0 0 10px}
+    .muted{color:#667085;font-size:14px}
+    .danger{color:#b00020}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    input{width:100%;padding:12px;border-radius:10px;border:1px solid #d0d5dd;font-size:16px}
+    button{background:#3f51b5;color:#fff;border:0;border-radius:10px;padding:10px 16px;font-size:16px;cursor:pointer}
+    button:hover{background:#2e3a9e}
+    button[disabled]{opacity:.55;cursor:not-allowed}
+    .section{display:none}
+    .show{display:block}
+    .topbar{display:flex;align-items:center;justify-content:space-between;background:#f4f6ff;border:1px solid #e2e6ff;padding:12px 16px;border-radius:12px;margin-bottom:16px}
+    .badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;color:#243b70;font-size:12px}
+    .tabs{display:flex;gap:8px;border-bottom:1px solid #eee;margin-bottom:12px}
+    .tab{background:#eef2ff;border:1px solid #c7d2fe;color:#243b70;padding:8px 12px;border-radius:10px 10px 0 0;cursor:pointer}
+    .tab.active{background:#fff;border-bottom-color:#fff}
+    .voter{padding:10px 15px;border:1px solid #ddd;border-radius:8px;margin:5px 0;cursor:pointer;transition:.2s}
+    .voter:hover{background:#f5f8ff}
+    .meta{font-size:13px;color:#666}
+    #selected{margin-top:20px;padding:16px;border-top:2px solid #eee;background:#f9f9ff;border-radius:12px;display:none}
+    #msg{margin-top:8px;font-weight:600}
+
+    /* Directory (mar_full / Devanagari) */
+    .letters{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+    .pill{padding:6px 10px;border-radius:999px;border:1px solid #c7d2fe;background:#eef2ff;color:#243b70;cursor:pointer}
+    .pill.active{background:#fff}
+    .tablewrap{overflow:auto;max-height:70vh;border:1px solid #eee;border-radius:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #e5e7eb;padding:10px;text-align:left;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- LOGIN VIEW -->
+    <section id="view-login" class="section show">
+      <h1>🔐 Sign in</h1>
+      <p class="muted">Auth via <code>public.access</code> (columns: <code>name</code>, <code>password</code>, <code>role</code>).</p>
+      <div class="row">
+        <input id="loginName" type="text" placeholder="Username (access.name)" autocomplete="username" />
+        <input id="loginPass" type="password" placeholder="Password (access.password)" autocomplete="current-password" />
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:14px">
+        <button id="loginBtn">Sign In</button>
+        <span class="muted">Save: <code>admin</code>, <code>editor</code> • Sources: <code>admin</code>, <code>subadmin</code> • Directory (mar_full): <code>admin</code>, <code>subadmin</code></span>
+      </div>
+      <div id="loginMsg" class="danger" style="min-height:18px;margin-top:8px"></div>
+    </section>
+
+    <!-- APP VIEW -->
+    <section id="view-app" class="section">
+      <div class="topbar">
+        <div>
+          <strong>🗳️ Voter Portal</strong><br>
+          <span class="muted">Directory uses <b>mar_full</b> (Devanagari) and is visible only to <b>admin</b> & <b>subadmin</b>.</span>
+        </div>
+        <div id="userBox"><span class="badge">Not signed in</span></div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button id="tab-directory" class="tab" style="display:none">📚 Directory (मराठी)</button>
+        <button id="tab-search" class="tab" style="display:none">🔎 Search</button>
+        <button id="tab-sources" class="tab" style="display:none">🧾 Sources</button>
+      </div>
+
+      <!-- DIRECTORY TAB (admin & subadmin) -->
+      <div id="panel-directory" style="display:none">
+        <div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div class="letters" id="dirLetters"></div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="dirSearch" type="text" placeholder="शोधा: मराठी नाव / क्षेत्र / स्रोत…" style="max-width:360px" />
+            <button id="dirExport">⬇️ CSV निर्यात</button>
+          </div>
+        </div>
+        <div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div class="muted"><span class="count" id="dirCount">0</span> निकाल</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button id="dirReset">Reset</button>
+            <button id="dirMore">Load more</button>
+          </div>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>SR</th> <!-- ADD THIS LINE -->
+                <th>मराठी नाव (mar_full)</th>
+                <th>English Name</th>
+                <th>Area</th>
+                <th>Gender</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody id="dirBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SEARCH TAB (requires login) -->
+      <div id="panel-search" style="display:none">
+        <input id="search" type="text" placeholder="Search by English name…" />
+        <div id="results"></div>
+
+        <div id="selected">
+          <h3 id="selName"></h3>
+          <p id="selInfo" class="muted"></p>
+          <input id="sourceInput" type="text" placeholder="Enter Source…" />
+          <button id="saveBtn">💾 Save Source</button>
+          <p id="msg"></p>
+          <p id="savePolicyNote" class="muted" style="display:none"></p>
+        </div>
+      </div>
+
+      <!-- SOURCES TAB (admin & subadmin) -->
+      <div id="panel-sources" style="display:none">
+        <div class="toolbar">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="pill">Visible to: admin, subadmin</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="srcSearch" type="text" placeholder="Filter sources…" style="max-width:320px" />
+            <button id="refreshSources">⟳ Refresh</button>
+          </div>
+        </div>
+        <div id="sourcesInfo" class="muted"></div>
+        <div id="sourcesIndex">
+          <div id="sourcesList" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:10px;"></div>
+        </div>
+        <div id="sourcesDetail" style="display:none">
+          <div class="toolbar">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button id="backToSources">← Back to Sources</button>
+              <span id="detailTitle" class="pill"></span>
+            </div>
+          </div>
+          <div style="overflow:auto; max-height:420px; border:1px solid #eee; border-radius:12px;">
+            <table class="table" id="sourceVotersTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>English Name</th>
+                  <th>Marathi Name</th>
+                  <th>Area</th>
+                  <th>Gender</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    // --- Supabase init ---
+    const supabase = createClient(
+      'https://qbvxqtlbdhaviatxxels.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFidnhxdGxiZGhhdmlhdHh4ZWxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2NzI5NzgsImV4cCI6MjA3ODI0ODk3OH0.nm9gjBgapDsVEkg3QAMxNFJK10_qzUCRmgpZDEBdmAg'
+    );
+
+    // --- Elements ---
+    const viewLogin = document.getElementById('view-login');
+    const viewApp   = document.getElementById('view-app');
+
+    const loginName = document.getElementById('loginName');
+    const loginPass = document.getElementById('loginPass');
+    const loginBtn  = document.getElementById('loginBtn');
+    const loginMsg  = document.getElementById('loginMsg');
+
+    const userBox = document.getElementById('userBox');
+
+    // Tabs
+    const tabDirectory = document.getElementById('tab-directory');
+    const tabSearch = document.getElementById('tab-search');
+    const tabSources = document.getElementById('tab-sources');
+    const panelDirectory = document.getElementById('panel-directory');
+    const panelSearch = document.getElementById('panel-search');
+    const panelSources = document.getElementById('panel-sources');
+
+    // Search tab elements
+    const search = document.getElementById('search');
+    const results = document.getElementById('results');
+    const selected = document.getElementById('selected');
+    const selName = document.getElementById('selName');
+    const selInfo = document.getElementById('selInfo');
+    const sourceInput = document.getElementById('sourceInput');
+    const msg = document.getElementById('msg');
+    const saveBtn = document.getElementById('saveBtn');
+    const savePolicyNote = document.getElementById('savePolicyNote');
+
+    // Sources tab elements
+    const srcSearch = document.getElementById('srcSearch');
+    const refreshSources = document.getElementById('refreshSources');
+    const sourcesInfo = document.getElementById('sourcesInfo');
+    const sourcesList = document.getElementById('sourcesList');
+    const sourcesIndex = document.getElementById('sourcesIndex');
+    const sourcesDetail = document.getElementById('sourcesDetail');
+    const sourceVotersTable = document.querySelector('#sourceVotersTable tbody');
+    const backToSources = document.getElementById('backToSources');
+    const detailTitle = document.getElementById('detailTitle');
+
+    // Directory (मराठी)
+    const dirLetters = document.getElementById('dirLetters');
+    const dirSearch = document.getElementById('dirSearch');
+    const dirExport = document.getElementById('dirExport');
+    const dirReset = document.getElementById('dirReset');
+    const dirMore = document.getElementById('dirMore');
+    const dirBody = document.getElementById('dirBody');
+    const dirCount = document.getElementById('dirCount');
+
+    // --- Role Gate ---
+    const SAVE_ROLES = ['admin','editor'];        // who can save
+    const SOURCES_ROLES = ['admin','subadmin'];   // who can see Sources tab
+    const DIRECTORY_ROLES = ['admin','subadmin']; // who can see Directory tab
+
+    function show(view){
+      viewLogin.classList.toggle('show', view === 'login');
+      viewApp.classList.toggle('show', view === 'app');
+    }
+
+    function getUser(){ try { return JSON.parse(localStorage.getItem('access_user')||'null'); } catch { return null } }
+    function setUser(u){ localStorage.setItem('access_user', JSON.stringify(u)); renderTopbar(); applyRoleGates(); }
+    function clearUser(){ localStorage.removeItem('access_user'); renderTopbar(); applyRoleGates(); show('login'); }
+
+    function canSave(){ const u = getUser(); return !!(u && SAVE_ROLES.includes((u.role||'').toLowerCase())); }
+    function canSeeSources(){ const u = getUser(); return !!(u && SOURCES_ROLES.includes((u.role||'').toLowerCase())); }
+    function canSeeDirectory(){ const u = getUser(); return !!(u && DIRECTORY_ROLES.includes((u.role||'').toLowerCase())); }
+
+    function renderTopbar(){
+      const u = getUser();
+      if(!u){ userBox.innerHTML = '<span class="badge">Not signed in</span>'; return; }
+      userBox.innerHTML = `
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="badge">👤 ${u.name}</span>
+          <span class="badge">🔑 Role: ${u.role||'viewer'}</span>
+          <button id="logoutBtn" style="margin-left:6px">🚪 Logout</button>
+        </div>`;
+      document.getElementById('logoutBtn').addEventListener('click', clearUser);
+    }
+
+    // --- Login ---
+    async function login(name, password){
+      loginMsg.textContent = '';
+      const { data, error } = await supabase
+        .from('access')
+        .select('sr,name,role')
+        .eq('name', name)
+        .eq('password', password)
+        .maybeSingle();
+
+      if(error){ loginMsg.textContent = 'Login error: ' + error.message; return; }
+      if(!data){ loginMsg.textContent = 'Invalid username or password.'; return; }
+
+      setUser({ sr: data.sr, name: data.name, role: (data.role||'viewer') });
+      show('app');
+      // Default tab by role
+      if(canSeeDirectory()) { setActiveTab('directory'); loadDirectoryPage(); }
+      else if(canSeeSources()) { setActiveTab('sources'); loadSources(); }
+      else { setActiveTab('search'); searchVoters(); }
+    }
+
+    loginBtn.addEventListener('click', async () => {
+      const n = loginName.value.trim();
+      const p = loginPass.value;
+      if(!n || !p){ loginMsg.textContent = 'Please enter both username and password.'; return; }
+      loginBtn.disabled = true; loginBtn.textContent = 'Signing in…';
+      await login(n, p);
+      loginBtn.disabled = false; loginBtn.textContent = 'Sign In';
+    });
+
+    [loginName, loginPass].forEach(el => el.addEventListener('keydown', e => { if(e.key==='Enter') loginBtn.click(); }));
+
+    // --- Tabs behaviour ---
+    function setActiveTab(which){
+      tabDirectory.classList.toggle('active', which==='directory');
+      tabSearch.classList.toggle('active', which==='search');
+      tabSources.classList.toggle('active', which==='sources');
+
+      panelDirectory.style.display = which==='directory' ? 'block' : 'none';
+      panelSearch.style.display    = which==='search'    ? 'block' : 'none';
+      panelSources.style.display   = which==='sources'   ? 'block' : 'none';
+    }
+
+    tabDirectory.addEventListener('click', ()=> setActiveTab('directory'));
+    tabSearch.addEventListener('click', ()=> setActiveTab('search'));
+    tabSources.addEventListener('click', ()=> setActiveTab('sources'));
+
+    function applyRoleGates(){
+      const logged = !!getUser();
+      // Save gate
+      saveBtn.disabled = !canSave();
+      savePolicyNote.style.display = canSave() ? 'none' : 'block';
+      if(!canSave()){
+        savePolicyNote.textContent = 'You are signed in but your role is not permitted to save. Allowed roles: ' + SAVE_ROLES.join(', ');
+      }
+      // Tabs visibility
+      tabSearch.style.display    = logged ? 'inline-block' : 'none';
+      tabSources.style.display   = canSeeSources()   ? 'inline-block' : 'none';
+      tabDirectory.style.display = canSeeDirectory() ? 'inline-block' : 'none';
+    }
+
+    // --- Search feature (requires login) ---
+    async function searchVoters(query=''){
+      const q = query.trim().toLowerCase();
+      results.innerHTML = '⏳ Searching…';
+      const { data, error } = await supabase
+        .from('voterlist')
+        .select('*')
+        .ilike('eng_full', `%${q}%`)
+        .limit(100);
+
+      if(error){ results.innerHTML = '❌ ' + error.message; return; }
+      if(!data.length){ results.innerHTML = '<p>No voters found.</p>'; return; }
+
+      results.innerHTML = data.map(v => `
+        <div class="voter" data-id="${v.sr}" data-eng="${v.eng_full}" data-mar="${v.mar_full}" data-area="${v.area}" data-gender="${v.gender}" data-source="${v.Source||''}">
+          <b>${v.eng_full}</b><br>
+          <small>${v.mar_full}</small>
+          <div class="meta">Area: ${v.area} • Gender: ${v.gender}</div>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.voter').forEach(el => {
+        el.addEventListener('click', () => {
+          const voter = {
+            id: el.dataset.id,
+            eng: el.dataset.eng,
+            mar: el.dataset.mar,
+            area: el.dataset.area,
+            gender: el.dataset.gender,
+            source: el.dataset.source
+          };
+          showSourceEditor(voter);
+        });
+      });
+    }
+
+    function showSourceEditor(v){
+      selName.textContent = v.eng;
+      selInfo.textContent = `${v.mar} • Area ${v.area} • Gender ${v.gender}`;
+      sourceInput.value = v.source;
+      msg.textContent = '';
+      selected.style.display = 'block';
+      applyRoleGates();
+      sourceInput.focus();
+      selected.dataset.voterId = v.id;
+    }
+
+    saveBtn.addEventListener('click', async () => {
+      const id = selected.dataset.voterId;
+      if(!id) return;
+      if(!canSave()){ msg.style.color='red'; msg.textContent='❌ Your role is not permitted to save.'; return; }
+      const source = sourceInput.value.trim();
+      msg.style.color='#555'; msg.textContent='Saving…';
+      const { error } = await supabase
+        .from('voterlist')
+        .update({ Source: source })
+        .eq('sr', id);
+      if(error){ msg.style.color='red'; msg.textContent='❌ ' + error.message; }
+      else { msg.style.color='green'; msg.textContent='✅ Source saved successfully!'; loadSources(srcSearch.value); }
+    });
+
+    let t; if (search) search.addEventListener('input', e => { clearTimeout(t); t = setTimeout(() => searchVoters(e.target.value), 350); });
+
+    // --- Sources feature (admin & subadmin) ---
+    function showSourcesIndex(){ sourcesIndex.style.display='block'; sourcesDetail.style.display='none'; }
+    function showSourcesDetail(){ sourcesIndex.style.display='none'; sourcesDetail.style.display='block'; }
+
+    async function loadSources(filter=''){
+      if(!canSeeSources()) return;
+      sourcesList.innerHTML = '<div class="muted">⏳ Loading sources…</div>';
+
+      let { data, error } = await supabase
+        .from('voterlist')
+        .select('Source')
+        .not('Source','is',null)
+        .neq('Source','')
+        .limit(10000);
+
+      if(error){ sourcesList.innerHTML = `<div class="danger">❌ ${error.message}</div>`; return; }
+
+      const terms = (data||[]).map(r => (r.Source||'').trim()).filter(Boolean);
+      const counts = new Map();
+      for(const s of terms){ counts.set(s, (counts.get(s)||0)+1); }
+
+      let items = Array.from(counts.entries()).map(([src,count])=>({src,count})).sort((a,b)=> a.src.localeCompare(b.src));
+
+      const q = (filter||'').trim().toLowerCase();
+      if(q){ items = items.filter(it => it.src.toLowerCase().includes(q)); }
+
+      sourcesInfo.textContent = `${items.length} source${items.length===1?'':'s'} found`;
+
+      if(!items.length){ sourcesList.innerHTML = '<div class="muted">No sources found.</div>'; return; }
+
+      sourcesList.innerHTML = items.map(it => `
+        <button class="voter" data-src="${it.src.replaceAll('"','&quot;')}">
+          <b>${it.src}</b><br>
+          <span class="meta">${it.count} voter${it.count===1?'':'s'}</span>
+        </button>
+      `).join('');
+
+      document.querySelectorAll('#sourcesList [data-src]').forEach(el => {
+        el.addEventListener('click', () => {
+          const src = el.getAttribute('data-src');
+          showSourceVoters(src);
+        });
+      });
+
+      showSourcesIndex();
+    }
+
+    async function showSourceVoters(src){
+      if(!canSeeSources()) return;
+      detailTitle.textContent = `Source: ${src}`;
+      sourceVotersTable.innerHTML = '<tr><td colspan="5">⏳ Loading…</td></tr>';
+      showSourcesDetail();
+
+      const { data, error } = await supabase
+        .from('voterlist')
+        .select('eng_full,mar_full,area,gender')
+        .eq('Source', src)
+        .order('eng_full', { ascending: true })
+        .limit(5000);
+
+      if(error){ sourceVotersTable.innerHTML = `<tr><td colspan="5">❌ ${error.message}</td></tr>`; return; }
+
+      const rows = data || [];
+      if(!rows.length){ sourceVotersTable.innerHTML = '<tr><td colspan="5">No voters for this source.</td></tr>'; return; }
+
+      sourceVotersTable.innerHTML = rows.map((r,i)=>`
+        <tr>
+          <td>${i+1}</td>
+          <td>${r.eng_full||''}</td>
+          <td>${r.mar_full||''}</td>
+          <td>${r.area||''}</td>
+          <td>${r.gender||''}</td>
+        </tr>
+      `).join('');
+    }
+
+    backToSources.addEventListener('click', showSourcesIndex);
+    srcSearch.addEventListener('input', () => loadSources(srcSearch.value));
+    refreshSources.addEventListener('click', () => loadSources(srcSearch.value));
+
+    // --- Directory (mar_full / Devanagari) ---
+    const DIR_PAGE_SIZE = 500;
+    let dirLetter = 'ALL';
+    let dirQuery = '';
+    let dirPage = 0;
+    let dirRows = [];
+
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+
+    function buildDirLetters(){
+      const letters = ['All','अ','आ','इ','ई','उ','ऊ','ए','ऐ','ओ','औ','क','ख','ग','घ','च','छ','ज','झ','ट','ठ','ड','ढ','त','थ','द','ध','न','प','फ','ब','भ','म','य','र','ल','व','श','ष','स','ह','#'];
+      dirLetters.innerHTML = letters.map((L,i)=>`<button class="pill ${i===0?'active':''}" data-letter="${L==='All'?'ALL':L}">${L}</button>`).join('');
+      dirLetters.addEventListener('click', e => {
+        const btn = e.target.closest('[data-letter]'); if(!btn) return;
+        dirLetters.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+        btn.classList.add('active');
+        dirLetter = btn.dataset.letter; dirPage=0; dirRows=[]; dirBody.innerHTML='';
+        loadDirectoryPage();
+      });
+    }
+
+    function dirPrintRows(newRows){
+      const start = dirRows.length;
+      dirRows = dirRows.concat(newRows);
+      dirCount.textContent = dirRows.length;
+      dirBody.insertAdjacentHTML('beforeend', newRows.map((r,i)=>`
+        <tr>
+          <td>${start+i+1}</td>
+            <td>${escapeHtml(r.sr||'')}</td> 
+          <td>${escapeHtml(r.mar_full||'')}</td>
+          <td>${escapeHtml(r.eng_full||'')}</td>
+          <td>${escapeHtml(r.area||'')}</td>
+          <td>${escapeHtml(r.gender||'')}</td>
+          <td>${escapeHtml(r.Source||'')}</td>
+        </tr>`).join(''));
+    }
+
+    async function loadDirectoryPage(){
+      if(!canSeeDirectory()) return; // gated
+      dirMore.disabled = true; dirMore.textContent='Loading…';
+
+      let q = supabase
+        .from('voterlist')
+        .select('sr,eng_full,mar_full,area,gender,Source')
+        .order('mar_full', { ascending: true })
+        .range(dirPage*DIR_PAGE_SIZE, dirPage*DIR_PAGE_SIZE+DIR_PAGE_SIZE-1);
+
+      if(dirLetter !== 'ALL'){
+        if(dirLetter === '#'){
+          q = supabase
+            .from('voterlist')
+            .select('sr,eng_full,mar_full,area,gender,Source')
+            .order('mar_full', { ascending: true })
+            .limit(DIR_PAGE_SIZE*2);
+        } else {
+          q = supabase
+            .from('voterlist')
+            .select('sr,eng_full,mar_full,area,gender,Source')
+            .ilike('mar_full', `${dirLetter}%`)
+            .order('mar_full', { ascending: true })
+            .range(dirPage*DIR_PAGE_SIZE, dirPage*DIR_PAGE_SIZE+DIR_PAGE_SIZE-1);
+        }
+      }
+
+      const { data, error } = await q;
+      if(error){ dirBody.innerHTML = `<tr><td colspan="6">❌ ${escapeHtml(error.message)}</td></tr>`; dirMore.disabled=false; dirMore.textContent='Load more'; return; }
+
+      let list = data || [];
+      if(dirLetter === '#') list = list.filter(r => !/^\p{L}/u.test((r.mar_full||'').trim()));
+
+      const term = dirQuery.trim().toLowerCase();
+      if(term){
+        list = list.filter(r => (
+          (r.mar_full||'').toLowerCase().includes(term) ||
+          (r.eng_full||'').toLowerCase().includes(term) ||
+          (r.area||'').toLowerCase().includes(term) ||
+          (r.Source||'').toLowerCase().includes(term)
+        ));
+      }
+
+      if(dirPage===0 && list.length===0){ dirBody.innerHTML = '<tr><td colspan="6">No results.</td></tr>'; }
+      else { dirPrintRows(list); }
+
+      dirMore.disabled = list.length < DIR_PAGE_SIZE && dirLetter !== '#';
+      dirMore.textContent = dirMore.disabled ? 'No more' : 'Load more';
+    }
+
+    function dirResetAll(){
+      dirLetter='ALL'; dirQuery=''; dirPage=0; dirRows=[]; dirBody.innerHTML='';
+      dirLetters.querySelectorAll('.pill').forEach((p,i)=> p.classList.toggle('active', i===0));
+      dirSearch.value='';
+      loadDirectoryPage();
+    }
+
+    function csvSafe(v){ if(v==null) return ''; const s=String(v).replaceAll('"','""'); return '"'+s+'"'; }
+    function dirExportCsv(){
+      if(!dirRows.length){ alert('Nothing to export yet.'); return; }
+      const headers = ['#','sr','mar_full','eng_full','area','gender','Source'];
+      const lines = [headers.join(',')].concat(dirRows.map((r,i)=>[
+        i+1,csvSafe(r.sr), csvSafe(r.mar_full), csvSafe(r.eng_full), csvSafe(r.area), csvSafe(r.gender), csvSafe(r.Source)
+      ].join(',')));
+      const blob = new Blob(["\uFEFF" + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='voters_directory_mar_full.csv'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    }
+
+    dirSearch.addEventListener('input', e => { clearTimeout(window._dirT); window._dirT = setTimeout(()=>{ dirQuery = e.target.value||''; dirPage=0; dirRows=[]; dirBody.innerHTML=''; loadDirectoryPage(); }, 300); });
+    dirMore.addEventListener('click', ()=>{ dirPage++; loadDirectoryPage(); });
+    dirReset.addEventListener('click', dirResetAll);
+    dirExport.addEventListener('click', dirExportCsv);
+    buildDirLetters();
+
+    // --- Boot ---
+    (function init(){
+      const u = getUser();
+      if(!u){ show('login'); applyRoleGates(); return; }
+      show('app');
+      renderTopbar();
+      applyRoleGates();
+      if(canSeeDirectory()) { setActiveTab('directory'); loadDirectoryPage(); }
+      else if(canSeeSources()) { setActiveTab('sources'); loadSources(); }
+      else { setActiveTab('search'); searchVoters(); }
+    })();
+  </script>
+</body>
+</html>
